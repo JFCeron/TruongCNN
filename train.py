@@ -85,8 +85,8 @@ def main():
     model = TruongNet(img0.shape[0], img0.shape[1], img0.shape[2])
     del img0, label0
 
-    # loss and optimizer
-    criterion = nn.CrossEntropyLoss(reduction="sum")
+    # loss and optimizer; weights are added to optimize for F2-measure
+    criterion = nn.CrossEntropyLoss(reduction="sum", weight=torch.Tensor([1.0,2.0]))
     optimizer = torch.optim.Adam(model.parameters(), lr=params.lr)
     # decay learning rate when validation loss plateaus
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, verbose=True)
