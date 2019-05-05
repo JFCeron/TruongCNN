@@ -133,15 +133,15 @@ def generar_imagenes (data_subfolder="Pat3Train", W=30, S=(0,5.08/6), w=1, s=2/3
         segmento.loc[:,canales] = segmento.loc[:,canales].replace(0.034,0)
         intervalos_archivo = intervalos[intervalos.archivo == archivo].reset_index(drop=True)
         # generar las imagenes posibles de cada intervalo ininterrumpido
-        # almacenar en train/ val / o test/ segun la distribucion dada
-        subset = np.where(np.random.multinomial(n=1, pvals=subsets_dist)==1)[0][0]
         for i in range(len(intervalos_archivo)):
             inicio = intervalos_archivo.inicio[i]
             fin = intervalos_archivo.fin[i]
             # los archivos se llaman ..._0.csv : este numero indica si es preictal o interictal
             label = int(archivo[-5])
-            # generar las imagenes posibles. No aparecen negativos pues filtramos intervalos mas cortos que W
+            # generar las imagenes posibles. No aparecen num negativos pues filtramos intervalos mas cortos que W
             num_imagenes = (fin - inicio - S_ticks[label])//(W_ticks - S_ticks[label])
+            # almacenar en train/ val/ o test/ segun la distribucion dada
+            subset = np.where(np.random.multinomial(n=1, pvals=subsets_dist)==1)[0][0]
             for j in range(int(num_imagenes)):
                 inicio_imagen = inicio + j*(W_ticks - S_ticks[label])
                 fin_imagen = inicio_imagen + W_ticks - 1

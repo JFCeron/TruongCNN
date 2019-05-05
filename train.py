@@ -43,13 +43,21 @@ def main():
     parser.add_argument("-es_patience", type=int, default=10)
     # printing parameters
     parser.add_argument("-miniepochs", type=int, default=100)
+    # validation hyperparameters
+    parser.add_argument("-beta", type=float, default=2)
     # object that stores all parameters
     params = parser.parse_args()
 
+    # DONT CHANGE THIS
+    metric_names = ["train_lossXsample","train_tp","train_fp","train_tn","train_fn","train_precision",
+                    "train_recall","train_Fbeta","val_lossXsample","val_tp","val_fp","val_tn","val_fn",
+                    "val_precision","val_recall","val_Fbeta","epoch_duration","eval_duration"]
+
     # generate the image dataset if it doesn't exist
-    img_dataset_root = "preprocessed/"+params.data+"/W="+str(params.W)+  \
-        "_S=("+('%.2f'%params.S0)+","+('%.2f'%params.S1)+")_w="+str(params.w)+  \
-        "_s="+('%.2f'%params.s)+"_ch["+str(params.ch).replace(" ","")+"]/"
+    model_folder = params.data+"/W="+str(params.W)+ "_S=("+('%.2f'%params.S0) \
+                    +","+('%.2f'%params.S1)+")_w="+str(params.w)+"_s="+('%.2f'%params.s)  \
+                    +"_ch["+str(params.ch).replace(" ","")+"]/"
+    img_dataset_root = "preprocessed/"+model_folder
     if not os.path.exists(img_dataset_root):
         "Generating dataset at "+img_dataset_root
         canales = [int(i) for i in params.ch.split(",")]
@@ -58,7 +66,11 @@ def main():
     print("Image dataset ready")
 
     # use GPU if available
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if torch.cuda.is_available():
+        device = torch.device("cuda:0")
+    else:
+        print("WARNING: GPU not available")
+        device = torch.device("cpu")
 
     # generate Pytorch Datasets and Dataloaders
     train_dataset = EegDataset(img_dataset_root+"/train")
@@ -71,23 +83,39 @@ def main():
     img0, label0 = train_dataset.__getitem__(0)
     # CNN class instance
     model = TruongNet(img0.shape[0], img0.shape[1], img0.shape[2])
-    model.to(device)
     del img0, label0
+
     # loss and optimizer
     criterion = nn.CrossEntropyLoss(reduction="sum")
     optimizer = torch.optim.Adam(model.parameters(), lr=params.lr)
     # decay learning rate when validation loss plateaus
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, verbose=True)
 
+    # load last (not best!) checkpoint (model, optimizer, scheduler) and execution metrics if they exist
+    try:
+        all_metrics = pd.read_csv("checkpoints/"+model_folder+"metrics.csv")
+        checkpoint = torch.load("checkpoints/"+model_folder+"checkpoint.pth.tar")
+        start_epoch = checkpoint['epoch']
+        scheduler.load_state_dict(checkpoint['scheduler'])
+        model.load_state_dict(checkpoint['state_dict'])
+        model.to(device)
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        print("Checkpoint loaded: Resuming from epoch {}".format(checkpoint['epoch']))
+    except:
+        print("No check points available; starting from scratch")
+        all_metrics = pd.DataFrame([], columns=metric_names)
+        start_epoch = 1
+    try:
+        os.makedirs("checkpoints/"+model_folder)
+    except:
+        pass
+
     # Train the model
     print("Training started")
     train_start = time.time()
     total_steps = len(train_loader)
-    metric_names = ["train_lossXsample","train_tp","train_fp","train_tn","train_fn","train_f1",
-                    "val_lossXsample","val_tp","val_fp","val_tn","val_fn","val_f1"]
-    all_metrics = pd.DataFrame([], columns=metric_names)
 
-    for epoch in range(1, params.epochs+1):
+    for epoch in range(start_epoch, params.epochs+1):
         # record gradients
         model.train()
         epoch_start = time.time()
@@ -109,7 +137,8 @@ def main():
                 print("Epoch [{}/{}], Step [{}/{}], Loss per sample: {:.4f}, Duration: {:.2f}"
                     .format(epoch, params.epochs, i+1, total_steps, loss.item()/params.batch, time.time()-miniepoch_start))
                 miniepoch_start = time.time()
-        print("Epoch [{}/{}] duration: {:.2f}".format(epoch, params.epochs, time.time()-epoch_start))
+        epoch_duration = time.time()-epoch_start
+        print("Epoch [{}/{}] duration: {:.2f}".format(epoch, params.epochs, epoch_duration))
 
         # training epoch over; free up memory for evaluation
         del images, labels, outputs, loss
@@ -122,34 +151,50 @@ def main():
         train_lossXsample,train_tp,train_fp,train_tn,train_fn = metrics(model, train_loader, device, criterion, n_eval_samples)
         train_precision = float("inf") if train_tp+train_fp == 0 else train_tp/(train_tp+train_fp)
         train_recall = float("inf") if train_tp+train_fn == 0 else train_tp/(train_tp+train_fn)
-        train_f1 = 2*(train_precision*train_recall)/(train_precision+train_recall)
-        print("Train metrics: Loss per sample: {:.4f}, Precision: {:.2f}, Recall: {:.2f}, F1: {:.2f}"
-            .format(train_lossXsample,train_precision,train_recall,train_f1))
+        train_Fbeta = (1+params.beta**2)*(train_precision*train_recall)/((train_precision*params.beta**2)+train_recall)
+        print("Train metrics: Loss per sample: {:.4f}, Precision: {:.2f}, Recall: {:.2f}, F_beta: {:.2f}"
+            .format(train_lossXsample,train_precision,train_recall,train_Fbeta))
         val_lossXsample,val_tp,val_fp,val_tn,val_fn = metrics(model, val_loader, device, criterion, n_eval_samples)
         val_precision = float("inf") if val_tp+val_fp == 0 else val_tp/(val_tp+val_fp)
         val_recall = float("inf") if val_tp+val_fn == 0 else val_tp/(val_tp+val_fn)
-        val_f1 = 2*(val_precision*val_recall)/(val_precision+val_recall)
-        print("Val metrics:   Loss per sample: {:.4f}, Precision: {:.2f}, Recall: {:.2f}, F1: {:.2f}"
-            .format(val_lossXsample,val_precision,val_recall,val_f1))
-        print("Evaluation duration: {:.2f}".format(time.time()-eval_start))
+        val_Fbeta = (1+params.beta**2)*(val_precision*val_recall)/((val_precision*params.beta**2)+val_recall)
+        print("Val metrics:   Loss per sample: {:.4f}, Precision: {:.2f}, Recall: {:.2f}, F_beta: {:.2f}"
+            .format(val_lossXsample,val_precision,val_recall,val_Fbeta))
+        eval_duration = time.time()-eval_start
+        print("Evaluation duration: {:.2f}".format(eval_duration))
         # does learning rate need decay?
         scheduler.step(val_lossXsample*n_eval_samples)
 
         # store metrics to make graphs
-        epoch_metrics = pd.DataFrame([[train_lossXsample,train_tp,train_fp,train_tn,train_fn,train_f1,
-                        val_lossXsample,val_tp,val_fp,val_tn,val_fn,val_f1]], columns=metric_names)
-        all_metrics = all_metrics.append(epoch_metrics)
+        epoch_metrics = pd.DataFrame([[train_lossXsample,train_tp,train_fp,train_tn,train_fn,train_precision,
+                        train_recall,train_Fbeta,val_lossXsample,val_tp,val_fp,val_tn,val_fn,val_precision,
+                        val_recall,val_Fbeta,epoch_duration,eval_duration]],columns=metric_names)
+        all_metrics = all_metrics.append(epoch_metrics, ignore_index=True)
+        all_metrics.to_csv("checkpoints/"+model_folder+"metrics.csv", index=False)
 
-        # store parameters unless validation F1 is on the rise
-        f1_history = list(all_metrics["val_f1"])
-        best_epoch = f1_history.index(max(f1_history)) + 1
+        # store a checkpoint in case of system failure
+        torch.save({'epoch':epoch+1,'state_dict':model.state_dict(),'optimizer':optimizer.state_dict(),
+            'scheduler':scheduler.state_dict()}, "checkpoints/"+model_folder+"checkpoint.pth.tar")
+
+        # keep best model (only the model) in a separate file
+        Fbeta_history = list(all_metrics["val_Fbeta"])
+        best_epoch = Fbeta_history.index(max(Fbeta_history)) + 1
         if best_epoch == epoch:
-            # store parameters
-            # store optimizer
-        # early stop if f1 is not decreasing anymore
-        if epoch - params.es_patience <= best_epoch:
-            # early stop
+            torch.save(model.state_dict(), "checkpoints/"+model_folder+"best_model.pth.tar")
 
+        # early stop if F_beta is not decreasing anymore
+        if best_epoch <= epoch - params.es_patience:
+            print("Early stop at epoch {}".format(epoch))
+            best_loss = all_metrics[best_epoch-1, "val_lossXsample"]
+            best_Fbeta = all_metrics[best_epoch-1, "val_Fbeta"]
+            best_tp = all_metrics[best_epoch-1, "val_tp"]
+            best_fp = all_metrics[best_epoch-1, "val_fp"]
+            best_fn = all_metrics[best_epoch-1, "val_fn"]
+            best_precision = float("inf") if best_tp+best_fp == 0 else best_tp/(best_tp+best_fp)
+            best_recall = float("inf") if best_tp+best_fn == 0 else best_tp/(best_tp+best_fn)
+            print("Best metrics: Loss per sample: {:.4f}, Precision: {:.2f}, Recall: {:.2f}, F_beta: {:.2f}"
+                .format(best_loss,best_precision,best_recall,best_Fbeta))
+            break
 
 def metrics(model, loader, device, criterion, max_samples=float("inf")):
     """
@@ -167,7 +212,7 @@ def metrics(model, loader, device, criterion, max_samples=float("inf")):
             outputs = model(images)
             predictions = torch.max(outputs.data, 1)[1]
             # aggregate partial statistics on this mini-batch
-            loss += criterion(outputs, labels)
+            loss += criterion(outputs, labels).item()
             tp += torch.sum(predictions*labels).item()
             fp += torch.sum(predictions*(1-labels)).item()
             tn += torch.sum((1-predictions)*(1-labels)).item()
