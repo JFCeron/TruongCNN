@@ -88,7 +88,7 @@ def generate_images (data_subfolder="Pat3Train", W=30, O=(0,5.2/6), w=1, o=2/3, 
     if "Val" in data_subfolder or "Test" in data_subfolder:
         O = (0,0)
     num_positives, num_negatives = num_positives_negatives(data_subfolder=data_subfolder, W=W, O=O)
-    print("Generating images: "+str(num_positives)+" preictal and "+str(num_negatives)+" interictal")
+    print("Generating images from "+data_subfolder+": "+str(num_positives)+" preictal and "+str(num_negatives)+" interictal")
     os.makedirs(folder)
     # obtain channel names
     channels = CANALES[channels]

@@ -25,14 +25,14 @@ def main():
     # parse command line parameters
     parser = argparse.ArgumentParser()
     # data subset for this analysis
-    parser.add_argument("-data", type=str, default="Pat3Train")
+    parser.add_argument("-patient", type=str, default="3")
     # image time range and overlap for negatives and positives
     parser.add_argument("-W", type=int, default=30)
-    parser.add_argument("-S0", type=float, default=0)
-    parser.add_argument("-S1", type=float, default=5.08/6)
+    parser.add_argument("-O0", type=float, default=0)
+    parser.add_argument("-O1", type=float, default=5.2/6)
     # STFT small window time range and overlap
     parser.add_argument("-w", type=float, default=1)
-    parser.add_argument("-s", type=float, default=2/3)
+    parser.add_argument("-o", type=float, default=2/3)
     # channels encoded in a string
     parser.add_argument("-ch", type=str, default="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15")
     # neural network hyperparameters
@@ -53,16 +53,19 @@ def main():
                     "train_recall","train_Fbeta","val_lossXsample","val_tp","val_fp","val_tn","val_fn",
                     "val_precision","val_recall","val_Fbeta","epoch_duration","eval_duration"]
 
+    # the folders associated with this parametrizarion (in 'preproccesed' and 'checkpoints')
+    params_folder = "W="+str(params.W)+ "_O=("+('%.2f'%params.O0)+","+('%.2f'%params.O1)+")_w="\
+        +str(params.w)+"_o="+('%.2f'%params.o)+"_ch["+str(params.ch).replace(" ","")+"]/"
+
     # generate the image dataset if it doesn't exist
-    model_folder = params.data+"/W="+str(params.W)+ "_S=("+('%.2f'%params.S0) \
-                    +","+('%.2f'%params.S1)+")_w="+str(params.w)+"_s="+('%.2f'%params.s)  \
-                    +"_ch["+str(params.ch).replace(" ","")+"]/"
-    img_dataset_root = "preprocessed/"+model_folder
-    if not os.path.exists(img_dataset_root):
-        "Generating dataset at "+img_dataset_root
-        canales = [int(i) for i in params.ch.split(",")]
-        generar_imagenes(data_subfolder=params.data, W=params.W, S=(params.S0,params.S1),
-        w=params.w, s=params.s, canales=canales)
+    train_root = "preprocessed/"+params_folder+"Pat"+params.patient+"Train"
+    if not os.path.exists(train_root):
+        generate_images(data_subfolder="Pat"+params.patient+"Train", W=params.W, O=(params.O0,params.O1),w=params.w,
+        o=params.o, channels=[int(c) for c in params.ch.split(",")])
+    val_root = "preprocessed/"+params_folder+"Pat"+params.patient+"Val"
+    if not os.path.exists(val_root):
+        generate_images(data_subfolder="Pat"+params.patient+"Val", W=params.W, O=(params.O0,params.O1),w=params.w,
+        o=params.o, channels=[int(c) for c in params.ch.split(",")])
     print("Image dataset ready")
 
     # use GPU if available
@@ -73,10 +76,10 @@ def main():
         device = torch.device("cpu")
 
     # generate Pytorch Datasets and Dataloaders
-    train_dataset = EegDataset(img_dataset_root+"/train")
-    train_loader = DataLoader(dataset=train_dataset, batch_size=params.batch, shuffle=True, num_workers=20)
-    val_dataset = EegDataset(img_dataset_root+"/val")
-    val_loader = DataLoader(dataset=val_dataset, batch_size=params.batch, shuffle=True, num_workers=20)
+    train_dataset = EegDataset(train_root)
+    train_loader = DataLoader(dataset=train_dataset, batch_size=params.batch, shuffle=True, num_workers=15)
+    val_dataset = EegDataset(val_root)
+    val_loader = DataLoader(dataset=val_dataset, batch_size=params.batch, shuffle=True, num_workers=15)
     print("DataLoaders ready")
 
     # load one image to extract dimensions for TruongNet instanciation
@@ -86,15 +89,15 @@ def main():
     del img0, label0
 
     # loss and optimizer; weights are added to optimize for F2-measure
-    criterion = nn.CrossEntropyLoss(reduction="sum", weight=torch.Tensor([1.0,2.0]))
+    criterion = nn.CrossEntropyLoss(reduction="sum", weight=torch.Tensor([1.0,2.0]).to(device))
     optimizer = torch.optim.Adam(model.parameters(), lr=params.lr)
     # decay learning rate when validation loss plateaus
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, verbose=True)
 
     # load last (not best!) checkpoint (model, optimizer, scheduler) and execution metrics if they exist
     try:
-        all_metrics = pd.read_csv("checkpoints/"+model_folder+"metrics.csv")
-        checkpoint = torch.load("checkpoints/"+model_folder+"checkpoint.pth.tar")
+        all_metrics = pd.read_csv("checkpoints/"+params_folder+"metrics.csv")
+        checkpoint = torch.load("checkpoints/"+params_folder+"checkpoint.pth.tar")
         start_epoch = checkpoint['epoch']
         scheduler.load_state_dict(checkpoint['scheduler'])
         model.load_state_dict(checkpoint['state_dict'])
@@ -104,9 +107,10 @@ def main():
     except:
         print("No check points available; starting from scratch")
         all_metrics = pd.DataFrame([], columns=metric_names)
+        model.to(device)
         start_epoch = 1
     try:
-        os.makedirs("checkpoints/"+model_folder)
+        os.makedirs("checkpoints/"+params_folder)
     except:
         pass
 
@@ -170,17 +174,17 @@ def main():
                         train_recall,train_Fbeta,val_lossXsample,val_tp,val_fp,val_tn,val_fn,val_precision,
                         val_recall,val_Fbeta,epoch_duration,eval_duration]],columns=metric_names)
         all_metrics = all_metrics.append(epoch_metrics, ignore_index=True)
-        all_metrics.to_csv("checkpoints/"+model_folder+"metrics.csv", index=False)
+        all_metrics.to_csv("checkpoints/"+params_folder+"metrics.csv", index=False)
 
         # store a checkpoint in case of system failure
         torch.save({'epoch':epoch+1,'state_dict':model.state_dict(),'optimizer':optimizer.state_dict(),
-            'scheduler':scheduler.state_dict()}, "checkpoints/"+model_folder+"checkpoint.pth.tar")
+            'scheduler':scheduler.state_dict()}, "checkpoints/"+params_folder+"checkpoint.pth.tar")
 
         # keep best model (only the model) in a separate file
         Fbeta_history = list(all_metrics["val_Fbeta"])
         best_epoch = Fbeta_history.index(max(Fbeta_history)) + 1
         if best_epoch == epoch:
-            torch.save(model.state_dict(), "checkpoints/"+model_folder+"best_model.pth.tar")
+            torch.save(model.state_dict(), "checkpoints/"+params_folder+"best_model.pth.tar")
 
         # early stop if F_beta is not decreasing anymore
         if best_epoch <= epoch - params.es_patience:
