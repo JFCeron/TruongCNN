@@ -39,10 +39,13 @@ def main():
     parser.add_argument("-batch", type=int, default=16)
     parser.add_argument("-lr", type=float, default=0.001)
     parser.add_argument("-epochs", type=int, default=100)
-    parser.add_argument("-sch_patience", type=int, default=6)
+    parser.add_argument("-sch_patience", type=int, default=5)
     parser.add_argument("-es_patience", type=int, default=10)
+    # loss weights for positive and negative observations
+    parser.add_argument("-weight0", type=float, default=1)
+    parser.add_argument("-weight1", type=float, default=2)
     # printing parameters
-    parser.add_argument("-miniepochs", type=int, default=100)
+    parser.add_argument("-miniepochs", type=int, default=200)
     # validation hyperparameters
     parser.add_argument("-beta", type=float, default=2)
     # object that stores all parameters
@@ -89,10 +92,10 @@ def main():
     del img0, label0
 
     # loss and optimizer; weights are added to optimize for F2-measure
-    criterion = nn.CrossEntropyLoss(reduction="sum", weight=torch.Tensor([1.0,2.0]).to(device))
+    criterion = nn.CrossEntropyLoss(reduction="sum", weight=torch.Tensor([params.weight0,params.weight1]).to(device))
     optimizer = torch.optim.Adam(model.parameters(), lr=params.lr)
     # decay learning rate when validation loss plateaus
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10, verbose=True)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=params.sch_patience, verbose=True)
 
     # load last (not best!) checkpoint (model, optimizer, scheduler) and execution metrics if they exist
     try:
