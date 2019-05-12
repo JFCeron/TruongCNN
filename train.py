@@ -40,7 +40,7 @@ def main():
     parser.add_argument("-lr", type=float, default=0.001)
     parser.add_argument("-epochs", type=int, default=100)
     parser.add_argument("-sch_patience", type=int, default=5)
-    parser.add_argument("-es_patience", type=int, default=10)
+    parser.add_argument("-es_patience", type=int, default=15)
     # loss weights for positive and negative observations
     parser.add_argument("-weight0", type=float, default=1)
     parser.add_argument("-weight1", type=float, default=2)
@@ -48,6 +48,8 @@ def main():
     parser.add_argument("-miniepochs", type=int, default=200)
     # validation hyperparameters
     parser.add_argument("-beta", type=float, default=2)
+    # maximum number of images to generate from each class
+    parser.add_argument("-maxPerClass", type=int, default=40000)
     # object that stores all parameters
     params = parser.parse_args()
 
@@ -58,13 +60,13 @@ def main():
 
     # the folders associated with this parametrizarion (in 'preproccesed' and 'checkpoints')
     params_folder = "W="+str(params.W)+ "_O=("+('%.2f'%params.O0)+","+('%.2f'%params.O1)+")_w="\
-        +str(params.w)+"_o="+('%.2f'%params.o)+"_ch["+str(params.ch).replace(" ","")+"]/"
+        +str(params.w)+"_o="+('%.2f'%params.o)+"_maxPerClass="+str(params.maxPerClass)+"_ch["+str(params.ch).replace(" ","")+"]/"
 
     # generate the image dataset if it doesn't exist
     train_root = "preprocessed/"+params_folder+"Pat"+params.patient+"Train"
     if not os.path.exists(train_root):
         generate_images(data_subfolder="Pat"+params.patient+"Train", W=params.W, O=(params.O0,params.O1),w=params.w,
-        o=params.o, channels=[int(c) for c in params.ch.split(",")])
+        o=params.o, channels=[int(c) for c in params.ch.split(",")], maxPerClass=params.maxPerClass)
     val_root = "preprocessed/"+params_folder+"Pat"+params.patient+"Val"
     if not os.path.exists(val_root):
         generate_images(data_subfolder="Pat"+params.patient+"Val", W=params.W, O=(params.O0,params.O1),w=params.w,
@@ -80,9 +82,9 @@ def main():
 
     # generate Pytorch Datasets and Dataloaders
     train_dataset = EegDataset(train_root)
-    train_loader = DataLoader(dataset=train_dataset, batch_size=params.batch, shuffle=True, num_workers=15)
+    train_loader = DataLoader(dataset=train_dataset, batch_size=params.batch, shuffle=True, num_workers=30)
     val_dataset = EegDataset(val_root)
-    val_loader = DataLoader(dataset=val_dataset, batch_size=params.batch, shuffle=True, num_workers=15)
+    val_loader = DataLoader(dataset=val_dataset, batch_size=params.batch, shuffle=True, num_workers=30)
     print("DataLoaders ready")
 
     # load one image to extract dimensions for TruongNet instanciation
@@ -173,9 +175,9 @@ def main():
         scheduler.step(val_lossXsample*n_eval_samples)
 
         # store metrics to make graphs
-        epoch_metrics = pd.DataFrame([[train_lossXsample,train_tp,train_fp,train_tn,train_fn,train_precision,
-                        train_recall,train_Fbeta,val_lossXsample,val_tp,val_fp,val_tn,val_fn,val_precision,
-                        val_recall,val_Fbeta,epoch_duration,eval_duration]],columns=metric_names)
+            epoch_metrics = pd.DataFrame([[train_lossXsample,train_tp,train_fp,train_tn,train_fn,train_precision,
+                            train_recall,train_Fbeta,val_lossXsample,val_tp,val_fp,val_tn,val_fn,val_precision,
+                            val_recall,val_Fbeta,epoch_duration,eval_duration]],columns=metric_names)
         all_metrics = all_metrics.append(epoch_metrics, ignore_index=True)
         all_metrics.to_csv("checkpoints/"+params_folder+"metrics.csv", index=False)
 
@@ -192,11 +194,11 @@ def main():
         # early stop if F_beta is not decreasing anymore
         if best_epoch <= epoch - params.es_patience:
             print("Early stop at epoch {}".format(epoch))
-            best_loss = all_metrics[best_epoch-1, "val_lossXsample"]
-            best_Fbeta = all_metrics[best_epoch-1, "val_Fbeta"]
-            best_tp = all_metrics[best_epoch-1, "val_tp"]
-            best_fp = all_metrics[best_epoch-1, "val_fp"]
-            best_fn = all_metrics[best_epoch-1, "val_fn"]
+            best_loss = all_metrics.loc[best_epoch-1, "val_lossXsample"]
+            best_Fbeta = all_metrics.loc[best_epoch-1, "val_Fbeta"]
+            best_tp = all_metrics.loc[best_epoch-1, "val_tp"]
+            best_fp = all_metrics.loc[best_epoch-1, "val_fp"]
+            best_fn = all_metrics.loc[best_epoch-1, "val_fn"]
             best_precision = float("inf") if best_tp+best_fp == 0 else best_tp/(best_tp+best_fp)
             best_recall = float("inf") if best_tp+best_fn == 0 else best_tp/(best_tp+best_fn)
             print("Best metrics: Loss per sample: {:.4f}, Precision: {:.2f}, Recall: {:.2f}, F_beta: {:.2f}"

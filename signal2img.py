@@ -79,7 +79,7 @@ O : proportion of large window Overlap in uninterrupted intervals (preictal,inte
 o : proportion of STFT short window overlap
 channels : EEG channels to be taken into account
 """
-def generate_images (data_subfolder="Pat3Train", W=30, O=(0,5.2/6), w=1, o=2/3, channels=[i for i in range(16)]):
+def generate_images (data_subfolder="Pat3Train", W=30, O=(0,5.2/6), w=1, o=2/3, maxPerClass=40000, channels=[i for i in range(16)]):
     # the destination folder name is a concatenation of generation parameters
     folder = "preprocessed/W="+str(W)+"_O=("+('%.2f'%O[0])+","+('%.2f'%O[1])+")_w="+str(w)+"_o="+\
             ('%.2f'%o)+"_ch"+str(channels).replace(" ","")+"/"+data_subfolder
@@ -92,7 +92,6 @@ def generate_images (data_subfolder="Pat3Train", W=30, O=(0,5.2/6), w=1, o=2/3, 
     os.makedirs(folder)
     # obtain channel names
     channels = CANALES[channels]
-    # numero de observaciones que componen una ventana de duracion W y las sobreposiciones
     # number of observations in a length (s) W window and in the given overlap at frequency F
     W_ticks = np.floor(W*F)
     O_ticks = (np.floor(O[0]*W*F), np.floor(O[1]*W*F))
@@ -102,6 +101,8 @@ def generate_images (data_subfolder="Pat3Train", W=30, O=(0,5.2/6), w=1, o=2/3, 
     intervals = intervals.loc[(intervals.end - intervals.start) >= W_ticks]
     # shuffle intervals to eliminate temporal correlation
     intervals = intervals.sample(frac=1).reset_index(drop=True)
+    # positive and negative generated images
+    generated = np.array([0,0])
 
     # for every .csv file in the data_subfolder
     for csv_file in set(intervals.file):
@@ -112,15 +113,23 @@ def generate_images (data_subfolder="Pat3Train", W=30, O=(0,5.2/6), w=1, o=2/3, 
             # this is a private file; we have no use for it
             continue
 
+        # dont surpass the generated images maximum
+        if generated[label] >= maxPerClass:
+            if generated[1-label] >= maxPerClass:
+                break
+            else:
+                continue
+
         # the data segment in this csv_file
         segment = pd.read_csv(dataset_root+csv_file) # hay que arreglar el valor de dropout
         segment.loc[:,channels] = segment.loc[:,channels].replace(0.034,0)
 
-        # generate as many images as we can in each of its uninterrupted intervals
+        # generate images as we can in each of its uninterrupted intervals
         file_intervals = intervals[intervals.file == csv_file].reset_index(drop=True)
         for i in range(len(file_intervals)):
             start = file_intervals.start[i]
             end = file_intervals.end[i]
+
             # generate the images
             num_images = (end - start - O_ticks[label])//(W_ticks - O_ticks[label])
             for j in range(int(num_images)):
@@ -129,9 +138,9 @@ def generate_images (data_subfolder="Pat3Train", W=30, O=(0,5.2/6), w=1, o=2/3, 
                 # sensor data for this image
                 multi_signal = segment.loc[image_start:image_end,channels].reset_index(drop=True)
                 # throw exception if the interval has interruptions
-                assert np.sum(np.sum(np.abs(multi_signal), axis=1)==0)==0,("Subinterval "+str(i)+"_"+str(j)+" in "+csv_file\
-                    +" has data dropout")
+                assert np.sum(np.sum(np.abs(multi_signal), axis=1)==0)==0,("Subinterval "+str(i)+"_"+str(j)+" in "+csv_file+" has data dropout")
                 # image translation by STFT
                 image = signal2image(multi_signal, w=w, o=o)
-                np.save(file=folder+"/"+csv_file.split("/")[1]+"_inter"+str(i)+"_sub"+str(j)\
-                    +".npy",arr=image)
+                np.save(file=folder+"/"+csv_file.split("/")[1]+"_inter"+str(i)+"_sub"+str(j)+".npy",arr=image)
+                generated[label] += 1
+    print("Generated {} preictal and {} interictal images".format(generated[1],generated[0]))
