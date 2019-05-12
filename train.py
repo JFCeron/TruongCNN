@@ -1,4 +1,3 @@
-﻿# -*- coding: utf-8 -*-
 """
 Created on Thu Apr 11 00:22:36 2019
 
@@ -11,11 +10,15 @@ import argparse
 import numpy as np
 import pandas as pd
 import pdb
+# custom constants for this project
+import constants
 # image dataset generation
 from signal2img import *
 # custom dataset class and neural network
 from EegDataset import EegDataset
 from TruongNet import TruongNet
+# model evaluation exactly as in test
+from test import metrics
 # torch deep learning
 import torch
 from torch.utils.data import DataLoader, RandomSampler
@@ -23,42 +26,11 @@ import torch.nn as nn
 
 def main():
     # parse command line parameters
-    parser = argparse.ArgumentParser()
-    # data subset for this analysis
-    parser.add_argument("-patient", type=str, default="3")
-    # image time range and overlap for negatives and positives
-    parser.add_argument("-W", type=int, default=30)
-    parser.add_argument("-O0", type=float, default=0)
-    parser.add_argument("-O1", type=float, default=5.2/6)
-    # STFT small window time range and overlap
-    parser.add_argument("-w", type=float, default=1)
-    parser.add_argument("-o", type=float, default=2/3)
-    # channels encoded in a string
-    parser.add_argument("-ch", type=str, default="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15")
-    # neural network hyperparameters
-    parser.add_argument("-batch", type=int, default=16)
-    parser.add_argument("-lr", type=float, default=0.001)
-    parser.add_argument("-epochs", type=int, default=100)
-    parser.add_argument("-sch_patience", type=int, default=5)
-    parser.add_argument("-es_patience", type=int, default=15)
-    # loss weights for positive and negative observations
-    parser.add_argument("-weight0", type=float, default=1)
-    parser.add_argument("-weight1", type=float, default=2)
-    # printing parameters
-    parser.add_argument("-miniepochs", type=int, default=200)
-    # validation hyperparameters
-    parser.add_argument("-beta", type=float, default=2)
-    # maximum number of images to generate from each class
-    parser.add_argument("-maxPerClass", type=int, default=40000)
-    # object that stores all parameters
-    params = parser.parse_args()
+    params = constants.parseCommandLineParams()
+    # evaluation metric names (for results table)
+    metric_names = constants.train_metric_names
 
-    # DONT CHANGE THIS
-    metric_names = ["train_lossXsample","train_tp","train_fp","train_tn","train_fn","train_precision",
-                    "train_recall","train_Fbeta","val_lossXsample","val_tp","val_fp","val_tn","val_fn",
-                    "val_precision","val_recall","val_Fbeta","epoch_duration","eval_duration"]
-
-    # the folders associated with this parametrizarion (in 'preproccesed' and 'checkpoints')
+    # the folders associated with this parametrizarion (in 'preproccesed' and 'results')
     params_folder = "W="+str(params.W)+ "_O=("+('%.2f'%params.O0)+","+('%.2f'%params.O1)+")_w="\
         +str(params.w)+"_o="+('%.2f'%params.o)+"_maxPerClass="+str(params.maxPerClass)+"_ch["+str(params.ch).replace(" ","")+"]/"
 
@@ -101,8 +73,8 @@ def main():
 
     # load last (not best!) checkpoint (model, optimizer, scheduler) and execution metrics if they exist
     try:
-        all_metrics = pd.read_csv("checkpoints/"+params_folder+"metrics.csv")
-        checkpoint = torch.load("checkpoints/"+params_folder+"checkpoint.pth.tar")
+        all_metrics = pd.read_csv("results/"+params_folder+"train_metrics.csv")
+        checkpoint = torch.load("results/"+params_folder+"checkpoint.pth.tar")
         start_epoch = checkpoint['epoch']
         scheduler.load_state_dict(checkpoint['scheduler'])
         model.load_state_dict(checkpoint['state_dict'])
@@ -115,7 +87,7 @@ def main():
         model.to(device)
         start_epoch = 1
     try:
-        os.makedirs("checkpoints/"+params_folder)
+        os.makedirs("results/"+params_folder)
     except:
         pass
 
@@ -157,12 +129,14 @@ def main():
         eval_start = time.time()
         # limit the number of evaluated samples for speed
         n_eval_samples = len(val_dataset)
+        # training metrics
         train_lossXsample,train_tp,train_fp,train_tn,train_fn = metrics(model, train_loader, device, criterion, n_eval_samples)
         train_precision = float("inf") if train_tp+train_fp == 0 else train_tp/(train_tp+train_fp)
         train_recall = float("inf") if train_tp+train_fn == 0 else train_tp/(train_tp+train_fn)
         train_Fbeta = (1+params.beta**2)*(train_precision*train_recall)/((train_precision*params.beta**2)+train_recall)
         print("Train metrics: Loss per sample: {:.4f}, Precision: {:.2f}, Recall: {:.2f}, F_beta: {:.2f}"
             .format(train_lossXsample,train_precision,train_recall,train_Fbeta))
+        # validation metrics
         val_lossXsample,val_tp,val_fp,val_tn,val_fn = metrics(model, val_loader, device, criterion, n_eval_samples)
         val_precision = float("inf") if val_tp+val_fp == 0 else val_tp/(val_tp+val_fp)
         val_recall = float("inf") if val_tp+val_fn == 0 else val_tp/(val_tp+val_fn)
@@ -171,6 +145,7 @@ def main():
             .format(val_lossXsample,val_precision,val_recall,val_Fbeta))
         eval_duration = time.time()-eval_start
         print("Evaluation duration: {:.2f}".format(eval_duration))
+
         # does learning rate need decay?
         scheduler.step(val_lossXsample*n_eval_samples)
 
@@ -179,17 +154,17 @@ def main():
                         train_recall,train_Fbeta,val_lossXsample,val_tp,val_fp,val_tn,val_fn,val_precision,
                         val_recall,val_Fbeta,epoch_duration,eval_duration]],columns=metric_names)
         all_metrics = all_metrics.append(epoch_metrics, ignore_index=True)
-        all_metrics.to_csv("checkpoints/"+params_folder+"metrics.csv", index=False)
+        all_metrics.to_csv("results/"+params_folder+"train_metrics.csv", index=False)
 
         # store a checkpoint in case of system failure
         torch.save({'epoch':epoch+1,'state_dict':model.state_dict(),'optimizer':optimizer.state_dict(),
-            'scheduler':scheduler.state_dict()}, "checkpoints/"+params_folder+"checkpoint.pth.tar")
+            'scheduler':scheduler.state_dict()}, "results/"+params_folder+"checkpoint.pth.tar")
 
         # keep best model (only the model) in a separate file
         Fbeta_history = list(all_metrics["val_Fbeta"])
         best_epoch = Fbeta_history.index(max(Fbeta_history)) + 1
         if best_epoch == epoch:
-            torch.save(model.state_dict(), "checkpoints/"+params_folder+"best_model.pth.tar")
+            torch.save(model.state_dict(), "results/"+params_folder+"best_model.pth.tar")
 
         # early stop if F_beta is not decreasing anymore
         if best_epoch <= epoch - params.es_patience:
@@ -204,42 +179,6 @@ def main():
             print("Best metrics: Loss per sample: {:.4f}, Precision: {:.2f}, Recall: {:.2f}, F_beta: {:.2f}"
                 .format(best_loss,best_precision,best_recall,best_Fbeta))
             break
-
-def metrics(model, loader, device, criterion, max_samples=float("inf")):
-    """
-    Report loss, precision and recall of a model on data from a loader
-    Leave max_samples unspecified to iterate through complete dataloader
-    """
-    loss = tp = tn = fp = fn = 0
-    model.eval() # batchnorm or dropout layers will work in eval mode
-    with torch.no_grad(): # speeds up computations but you won’t be able to backprop
-        n_evaluated = 0
-        for i, (images, labels) in enumerate(loader):
-            images = images.to(device)
-            labels = labels.to(device)
-            # Run the forward pass
-            outputs = model(images)
-            predictions = torch.max(outputs.data, 1)[1]
-            # aggregate partial statistics on this mini-batch
-            loss += criterion(outputs, labels).item()
-            tp += torch.sum(predictions*labels).item()
-            fp += torch.sum(predictions*(1-labels)).item()
-            tn += torch.sum((1-predictions)*(1-labels)).item()
-            fn += torch.sum((1-predictions)*labels).item()
-
-            # limit the number of evaluated samples to make computation faster
-            n_evaluated += images.shape[0]
-            if n_evaluated >= max_samples:
-                print("Samples evaluated: "+str(n_evaluated))
-                break
-
-    print("tp={:.2f}, fp={:.2f}, tn={:.2f}, fn={:.2f}".format(tp,fp,tn,fn))
-    # calculate precision and recall
-    precision = float("inf") if tp+fp == 0 else tp/(tp+fp)
-    recall = float("inf") if tp+fn == 0 else tp/(tp+fn)
-    lossXsample = loss/n_evaluated
-
-    return lossXsample, tp, fp, tn, fn
 
 if __name__ == "__main__":
     main()

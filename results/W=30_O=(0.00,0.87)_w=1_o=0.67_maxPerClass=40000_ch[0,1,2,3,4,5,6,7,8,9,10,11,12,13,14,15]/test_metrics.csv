@@ -1,0 +1,2 @@
+test_lossXsample,test_tp,test_fp,test_tn,test_fn,test_precision,test_recall,test_Fbeta,eval_duration
+3.0879300274807537,248,2068,1391,94,0.1070811744386874,0.7251461988304093,0.33659066232356133,142.63856840133667

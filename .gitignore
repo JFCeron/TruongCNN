@@ -1,3 +1,5 @@
 *.csv
+!train_metrics.csv
+!test_metrics.csv
 *.npy
 checkpoints/
