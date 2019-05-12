@@ -24,19 +24,23 @@ class TruongNet(nn.Module):
             )
         self.conv2 = nn.Sequential(
             nn.BatchNorm2d(num_features=16),
-            nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=0),
+            #nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=0),
+            nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2)
             )
         self.conv3 = nn.Sequential(
             nn.BatchNorm2d(num_features=32),
-            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=0),
+            #nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=0),
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2)
             )
         # sizes of fully connected layers depend on sample image dimensions
-        height = (((t//4 - 2)//2) - 2)//2
-        width = (((f//4 - 2)//2) - 2)//2
+        #height = (((t//4 - 2)//2) - 2)//2
+        #width = (((f//4 - 2)//2) - 2)//2
+        height = t//16
+        width = f//16
         self.fc1 = nn.Sequential(
             nn.Dropout(p=0.5),
             # input images at this point have 64 channels (form previous layer out)
