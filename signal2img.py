@@ -78,7 +78,7 @@ channels : EEG channels to be taken into account
 def generate_images (data_subfolder="Pat3Train", W=30, O=(0,5.2/6), w=1, o=2/3, maxPerClass=40000, channels=[i for i in range(16)]):
     # the destination folder name is a concatenation of generation parameters
     folder = "preprocessed/W="+str(W)+"_O=("+('%.2f'%O[0])+","+('%.2f'%O[1])+")_w="+str(w)+"_o="+\
-            ('%.2f'%o)+"maxPerClass="+str(maxPerClass)+"_ch"+str(channels).replace(" ","")+"/"+data_subfolder
+            ('%.2f'%o)+"_maxPerClass="+str(maxPerClass)+"_ch"+str(channels).replace(" ","")+"/"+data_subfolder
     assert not os.path.exists(folder) , "We've already calculated the images for these parameters"
     # validation and test sets have no image overlap to test in the most general scenario
     if "Val" in data_subfolder or "Test" in data_subfolder:
