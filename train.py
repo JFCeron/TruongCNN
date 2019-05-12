@@ -175,9 +175,9 @@ def main():
         scheduler.step(val_lossXsample*n_eval_samples)
 
         # store metrics to make graphs
-            epoch_metrics = pd.DataFrame([[train_lossXsample,train_tp,train_fp,train_tn,train_fn,train_precision,
-                            train_recall,train_Fbeta,val_lossXsample,val_tp,val_fp,val_tn,val_fn,val_precision,
-                            val_recall,val_Fbeta,epoch_duration,eval_duration]],columns=metric_names)
+        epoch_metrics = pd.DataFrame([[train_lossXsample,train_tp,train_fp,train_tn,train_fn,train_precision,
+                        train_recall,train_Fbeta,val_lossXsample,val_tp,val_fp,val_tn,val_fn,val_precision,
+                        val_recall,val_Fbeta,epoch_duration,eval_duration]],columns=metric_names)
         all_metrics = all_metrics.append(epoch_metrics, ignore_index=True)
         all_metrics.to_csv("checkpoints/"+params_folder+"metrics.csv", index=False)
 
