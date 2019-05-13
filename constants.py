@@ -34,7 +34,7 @@ def parseCommandLineParams():
     # channels encoded in a string
     parser.add_argument("-ch", type=str, default="0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15")
     # neural network hyperparameters
-    parser.add_argument("-batch", type=int, default=16)
+    parser.add_argument("-batch", type=int, default=24)
     parser.add_argument("-lr", type=float, default=0.001)
     parser.add_argument("-epochs", type=int, default=100)
     parser.add_argument("-sch_patience", type=int, default=5)
