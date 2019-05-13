@@ -17,8 +17,6 @@ from signal2img import *
 # custom dataset class and neural network
 from EegDataset import EegDataset
 from TruongNet import TruongNet
-# model evaluation exactly as in test
-from test import metrics
 # torch deep learning
 import torch
 from torch.utils.data import DataLoader, RandomSampler
@@ -179,6 +177,42 @@ def main():
             print("Best metrics: Loss per sample: {:.4f}, Precision: {:.2f}, Recall: {:.2f}, F_beta: {:.2f}"
                 .format(best_loss,best_precision,best_recall,best_Fbeta))
             break
+
+def metrics(model, loader, device, criterion, max_samples=float("inf")):
+    """
+    Report loss, precision and recall of a model on data from a loader
+    Leave max_samples unspecified to iterate through complete dataloader
+    """
+    loss = tp = tn = fp = fn = 0
+    model.eval() # batchnorm or dropout layers will work in eval mode
+    with torch.no_grad(): # speeds up computations but you won’t be able to backprop
+        n_evaluated = 0
+        for i, (images, labels) in enumerate(loader):
+            images = images.to(device)
+            labels = labels.to(device)
+            # Run the forward pass
+            outputs = model(images)
+            predictions = torch.max(outputs.data, 1)[1]
+            # aggregate partial statistics on this mini-batch
+            loss += criterion(outputs, labels).item()
+            tp += torch.sum(predictions*labels).item()
+            fp += torch.sum(predictions*(1-labels)).item()
+            tn += torch.sum((1-predictions)*(1-labels)).item()
+            fn += torch.sum((1-predictions)*labels).item()
+
+            # limit the number of evaluated samples to make computation faster
+            n_evaluated += images.shape[0]
+            if n_evaluated >= max_samples:
+                print("Samples evaluated: "+str(n_evaluated))
+                break
+
+    print("tp={:.2f}, fp={:.2f}, tn={:.2f}, fn={:.2f}".format(tp,fp,tn,fn))
+    # calculate precision and recall
+    precision = float("inf") if tp+fp == 0 else tp/(tp+fp)
+    recall = float("inf") if tp+fn == 0 else tp/(tp+fn)
+    lossXsample = loss/n_evaluated
+
+    return lossXsample, tp, fp, tn, fn
 
 if __name__ == "__main__":
     main()
