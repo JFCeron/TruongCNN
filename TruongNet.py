@@ -45,7 +45,7 @@ class TruongNet(nn.Module):
             nn.Dropout(p=0.5),
             # input images at this point have 64 channels (form previous layer out)
             # we keep the last fc layer's size as in Truong (256)
-            nn.Linear(64*height*width, 256),
+            nn.Linear(max(64*height*width,1), 256),
             nn.Sigmoid()
             )
         self.fc2 = nn.Sequential(
