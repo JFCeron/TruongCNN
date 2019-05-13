@@ -39,13 +39,13 @@ class TruongNet(nn.Module):
         # sizes of fully connected layers depend on sample image dimensions
         #height = (((t//4 - 2)//2) - 2)//2
         #width = (((f//4 - 2)//2) - 2)//2
-        height = t//16
-        width = f//16
+        height = max(t//16, 1)
+        width = max(f//16, 1)
         self.fc1 = nn.Sequential(
             nn.Dropout(p=0.5),
             # input images at this point have 64 channels (form previous layer out)
             # we keep the last fc layer's size as in Truong (256)
-            nn.Linear(max(64*height*width,1), 256),
+            nn.Linear(64*height*width, 256),
             nn.Sigmoid()
             )
         self.fc2 = nn.Sequential(
