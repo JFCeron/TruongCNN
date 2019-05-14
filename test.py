@@ -14,8 +14,8 @@ import constants
 from signal2img import *
 # custom dataset class and neural network
 from EegDataset import EegDataset
-#from TruongNet import TruongNet
-from TruongNet_old import TruongNet
+from TruongNet import TruongNet
+#from TruongNet_old import TruongNet
 # torch deep learning
 import torch
 from torch.utils.data import DataLoader, RandomSampler
