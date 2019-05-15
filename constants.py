@@ -37,8 +37,8 @@ def parseCommandLineParams():
     parser.add_argument("-batch", type=int, default=24)
     parser.add_argument("-lr", type=float, default=0.001)
     parser.add_argument("-epochs", type=int, default=100)
-    parser.add_argument("-sch_patience", type=int, default=5)
-    parser.add_argument("-es_patience", type=int, default=15)
+    parser.add_argument("-sch_patience", type=int, default=3)
+    parser.add_argument("-es_patience", type=int, default=6)
     # loss weights for positive and negative observations
     parser.add_argument("-weight0", type=float, default=1)
     parser.add_argument("-weight1", type=float, default=2)
