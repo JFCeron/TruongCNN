@@ -130,7 +130,7 @@ def generate_images (data_subfolder="Pat3Train", W=30, O=(0,5.2/6), w=1, o=2/3, 
             num_images = (end - start - O_ticks[label])//(W_ticks - O_ticks[label])
             for j in range(int(num_images)):
                 img_path = folder+"/"+csv_file.split("/")[1]+"_inter"+str(i)+"_sub"+str(j)+".npy"
-                if !os.path.exists(img_path):
+                if not os.path.exists(img_path):
                     image_start = start + j*(W_ticks - O_ticks[label])
                     image_end = image_start + W_ticks - 1
                     # sensor data for this image
