@@ -27,7 +27,6 @@ def main():
     params = constants.parseCommandLineParams()
     # evaluation metric names (for results table)
     metric_names = constants.train_metric_names
-    pdb.set_trace()
     # the folders associated with this parametrizarion (in 'preproccesed' and 'results')
     params_folder = "W="+str(params.W)+ "_O=("+('%.2f'%params.O0)+","+('%.2f'%params.O1)+")_w="\
         +str(params.w)+"_o="+('%.2f'%params.o)+"_maxPerClass="+str(params.maxPerClass)+"_ch["+str(params.ch).replace(" ","")+"]/"
